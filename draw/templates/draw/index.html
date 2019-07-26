@@ -1,3 +1,4 @@
+
 {% load static %}
 
 <!DOCTYPE html>
@@ -11,25 +12,232 @@
     <script type="text/javascript" src="{% static 'draw/vendor/paper/paper-full.min.js' %}"></script>
 
     <style type="text/css">
+    .blueprint {
+    width: 100%;
+    height: 100%;
+    }
+   .couch {
+     width: 25%;
+     height: 25%;
+        
+      }
+    .coffee-table{
+      width: 25%;
+      height: 25%;
+    }
+
+      html,
+      body {
+        height: 100%;
+      }
+      canvas[resize] {
+    width: 100%;
+    height: 90%;
+}
+      .rotate-button {
+        width: 15%;
+        font-size: 200%;
+        
+      }
     </style>
 
 </head>
 <body>
     <!-- You may change the dimensions of this canvas -->
-    <canvas id="myCanvas" width="750px" height="750px"></canvas>
+  <canvas id="myCanvas" resize></canvas>
+  <img class = "blueprint"  id = 'blueprint-id' src="/static/images/blueprint.png" style="display:none"></img>
+  <img class = "couch" id="couch-id" src = "/static/images/couch-top.png" style="display:none"></img>
+  <img class = "coffee-table" id="coffee-table-id" src = "/static/images/coffee-table-top-down.png" style="display:none"></img>
+  <img class = "3dview"  id = '3dview-id' src="/static/images/living-room.png" style="display:none"></img>
+  <img class = "3dcouch" id="couch-front-id" src = "/static/images/couch-front.png" style="display:none"></img>
+  <img class = "3dcoffee-table" id="table-front-id" src = "/static/images/table-angle1.png" style="display:none"></img>
+<!--   <img class = "rotate-button" id="rotate-button-id" src= "/static/images/rotate-button.png"> </img> -->
+  <p><button class = "rotate-button" onclick="rotateClick()">Rotate</button></p>
 </body>
 <script>
 
     // setting up the canvas and one paper tool
     var canvas = document.getElementById('myCanvas');
+
     paper.setup(canvas);
     var tool = new paper.Tool();
 
     // getting the URL (you may want to use for Exercise 3)
     var url = window.location.href;
 
-    // var socket = new WebSocket(
-    //     'wss://<your url here>/ws/draw');
+    var socket = new WebSocket(
+        'wss://p3-websockets-paulee817-paulee817.codeanyapp.com/ws/draw');
+      // triggered when receiving a message from the server
+    
+    var blueprinton = true;
+    // last clicked furniture raster stored here
+    var lastClicked;
+    var lastClickedId;
+    var couchId = 2;
+    var tableId = 1;
+    // create rasters for each of the furniture items
+    // Create a raster item using the image tag with id='mona'
+    if (blueprinton) {
+      var backgroundRaster = new paper.Raster('blueprint-id');
+      var couchRaster = new paper.Raster('couch-id');
+      var tableRaster = new paper.Raster('coffee-table-id');
+    } else {
+      var backgroundRaster = new paper.Raster('3dview-id');
+      var couchRaster = new paper.Raster('couch-front-id');
+      var tableRaster = new paper.Raster('table-front-id');
+    }
+    var message;
+    // holds the current orientation of the objects to sync with other devices.
+    var couchOrientation = 0;
+    var tableOrientation = 0;
+    
+    // loads different src images depending on variant mode.
+    if (blueprinton) {
+      backgroundRaster.position = new paper.Point(window.innerWidth/2, 400);
+      couchRaster.position= new paper.Point(300, 800);
+      tableRaster.position= new paper.Point(800, 800);
+      tableRaster.scale(0.2);
+      couchRaster.scale(0.65);
+    } else {
+      backgroundRaster.position = new paper.Point(window.innerWidth/2, 400);
+      couchRaster.position = new paper.Point(300, 800);
+      tableRaster.position = new paper.Point(800, 800);
+      tableRaster.scale(0.3);
+      couchRaster.scale(0.15);
+    }
+    
+    // rotate button click function
+    function rotateClick() {
+      if (!(lastClicked)) {
+        alert("You need to click a piece of furniture to rotate!");
+      }
+      else {
+        // if last clicked item is couch, update its orientation in both modes.
+        if (lastClickedId == couchId) {
+          couchOrientation += 90;
+          currOrientation = couchOrientation % 360;
+          if (!blueprinton) {
+            if ((couchOrientation % 360) == 0) {
+              couchRaster.source = "/static/images/couch-front.png";
+            } else if ((couchOrientation % 360) == 90) {
+              couchRaster.source = "/static/images/couch-side.png";
+            } else if ((couchOrientation % 360) == 180) {
+              couchRaster.source = "/static/images/couch-back.png";
+            } else if ((couchOrientation % 360) == 270) {
+              couchRaster.source = "/static/images/couch-side2.png";
+            }
+          }
+          
+        // if last clicked item is table, update its orientation in both modes. 
+        } else {
+          tableOrientation += 90;
+          if (!blueprinton) {
+            currOrientation = tableOrientation % 270;
+            if ((tableOrientation % 270) == 0) {
+              tableRaster.source = "/static/images/table-angle1.png";
+            } else if ((tableOrientation % 270) == 90) {
+              tableRaster.source = "/static/images/table-angle2.png";
+            } else if ((tableOrientation % 270) == 180) {
+              tableRaster.source = "/static/images/table-angle3.png";
+            } 
+          } else {
+            currOrientation = tableOrientation % 360;
+          }
+        }
+        if (blueprinton) {
+          lastClicked.rotate(90);
+        } 
+        // broadcasts message with object and orientation
+        message = JSON.stringify({id: lastClickedId, rotation: currOrientation, x: null, y: null});
+        socket.send(message);
+      }
+    }
+  
+    // when clicked, updates lastClicked and lastClickedId.
+    tableRaster.onClick = function(){
+      lastClicked = tableRaster;
+      lastClickedId = tableId;
+    }
+    couchRaster.onClick = function() {
+      lastClicked = couchRaster;
+      lastClickedId = couchId;
+    }
+    
+    // handles dragging objects
+    tableRaster.onMouseDrag = function(event) {
+      tableRaster.insertAbove(couchRaster);
+      tableRaster.position = event.point;
+    }
+    couchRaster.onMouseDrag = function(event) {
+      couchRaster.insertAbove(tableRaster);
+      couchRaster.position = event.point;
+    }
+    
+    // when dropping objects, broadcasts object's current position
+    tableRaster.onMouseUp = function(event) {
+      message = JSON.stringify({id: tableId, rotation: null, x: (event.point.x/window.innerWidth), y: (event.point.y/backgroundRaster.height)});
+      socket.send(message);
+    }
+    couchRaster.onMouseUp = function(event) {
+      message = JSON.stringify({id: couchId, rotation: null, x: (event.point.x/window.innerWidth), y: (event.point.y/backgroundRaster.height)});
+      socket.send(message);
+    }
+    
+    // receives messages
+    socket.onmessage = function(receivedMessage) {
+      var msg = JSON.parse(receivedMessage.data);
+      var furnitureId = msg.id;
+      var rotation = msg.rotation;
+      var x = msg.x;
+      var y = msg.y;
+      if (furnitureId == couchId) {
+        if (rotation != null && rotation != couchOrientation) {
+          if (blueprinton) {
+            couchRaster.rotate(rotation-couchOrientation);
+            couchOrientation = rotation % 360;
+          } else {
+            if (rotation == 0) {
+              couchRaster.source = "/static/images/couch-front.png";
+            } else if (rotation == 90) {
+              couchRaster.source = "/static/images/couch-side.png";
+            } else if (rotation == 180) {
+              couchRaster.source = "/static/images/couch-back.png";
+            } else if (rotation == 270) {
+              couchRaster.source = "/static/images/couch-side2.png";
+            }
+            couchOrientation = rotation;
+          }
+        }
+         if (x != null) {
+           couchRaster.position = new paper.Point((x*window.innerWidth), (y*backgroundRaster.height));
+         }
+      } else {
+        if (rotation != null && rotation != tableOrientation) {
+          if (blueprinton) {
+            tableRaster.rotate(rotation-tableOrientation);
+            tableOrientation = rotation % 360;
+          } else {
+            if (rotation == 0) {
+              tableRaster.source = "/static/images/table-angle1.png";
+            } else if (rotation == 90) {
+              tableRaster.source = "/static/images/table-angle2.png";
+            } else if (rotation == 180) {
+              tableRaster.source = "/static/images/table-angle3.png";
+            } 
+            tableOrientation = rotation;
+          }
+        }
+        if (x != null) {
+          tableRaster.position = new paper.Point((x*window.innerWidth), (y*backgroundRaster.height));
+        }
+        
+      }
+    }
+
+    // notify console if socket closes unexpectedly
+    socket.onclose = function(e) {
+        console.error('Chat socket closed unexpectedly');
+    };
 
 
 </script>

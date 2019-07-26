@@ -1,0 +1,239 @@
+
+{% load static %}
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>P4 Drawing</title>
+
+    <link rel="stylesheet" type="text/css" href="{% static 'draw/vendor/bootstrap/css/bootstrap.min.css' %}">
+    <script type="text/javascript" src="{% static 'draw/vendor/jquery/jquery-3.3.1.min.js' %}"></script>
+    <script type="text/javascript" src="{% static 'draw/vendor/paper/paper-full.min.js' %}"></script>
+
+    <style type="text/css">
+    .blueprint {
+    width: 100%;
+    height: 100%;
+    }
+   .couch {
+     width: 25%;
+     height: 25%;
+        
+      }
+    .coffee-table{
+      width: 25%;
+      height: 25%;
+    }
+
+      html,
+      body {
+        height: 100%;
+      }
+      canvas[resize] {
+    width: 100%;
+    height: 90%;
+}
+      .rotate-button {
+        width: 15%;
+        font-size: 200%;
+        
+      }
+    </style>
+
+</head>
+<body>
+    <!-- You may change the dimensions of this canvas -->
+  <canvas id="myCanvas" resize></canvas>
+  <img class = "blueprint"  id = 'blueprint-id' src="/static/images/blueprint.png" style="display:none"></img>
+  <img class = "couch" id="couch-id" src = "/static/images/couch-top.png" style="display:none"></img>
+  <img class = "coffee-table" id="coffee-table-id" src = "/static/images/coffee-table-top-down.png" style="display:none"></img>
+<!--   <img class = "rotate-button" id="rotate-button-id" src= "/static/images/rotate-button.png"> </img> -->
+  <p><button class = "rotate-button" onclick="rotateClick()">Rotate</button></p>
+</body>
+<script>
+
+    // setting up the canvas and one paper tool
+    var canvas = document.getElementById('myCanvas');
+
+    paper.setup(canvas);
+    var tool = new paper.Tool();
+
+    // getting the URL (you may want to use for Exercise 3)
+    var url = window.location.href;
+
+    var socket = new WebSocket(
+        'wss://p3-websockets-paulee817-paulee817.codeanyapp.com/ws/draw');
+      // triggered when receiving a message from the server
+    
+    // last clicked furniture raster stored here
+    var lastClicked;
+    var lastClickedId;
+    var couchId = 2;
+    var tableId = 1;
+    // create rasters for each of the furniture items
+    // Create a raster item using the image tag with id='mona'
+    var blueprintRaster = new paper.Raster('blueprint-id');
+    var couchRaster = new paper.Raster('couch-id');
+    var tableRaster = new paper.Raster('coffee-table-id');
+    var message;
+    var couchOrientation = 0;
+    var tableOrientation = 0;
+    
+// //     couchRaster.rotate(45);
+//     blueprintRaster.position = new paper.Point(canvas.width/2, canvas.height/2);
+//     couchRaster.position= new paper.Point(canvas.width *3/4, canvas.height *3/4);
+//     tableRaster.position= new paper.Point(canvas.width *1/4, canvas.height *3/4);
+    blueprintRaster.position = new paper.Point(window.innerWidth/2, 400);
+    couchRaster.position= new paper.Point(300, 800);
+    tableRaster.position= new paper.Point(800, 800);
+    tableRaster.scale(0.2);
+    couchRaster.scale(0.65);
+    
+    function rotateClick() {
+      if (!(lastClicked)) {
+        alert("You need to click a piece of furniture to rotate!");
+      }
+      else {
+        if (lastClickedId == couchId) {
+          couchOrientation += 90;
+          currOrientation = couchOrientation;
+          //couchRaster.rotate(90);
+        } else {
+          tableOrientation += 90;
+          currOrientation = tableOrientation;
+          //tableRaster.rotate(90);
+        }
+        lastClicked.rotate(90);
+        // include lastClickedId
+        message = JSON.stringify({id: lastClickedId, rotation: currOrientation, x: null, y: null});
+        socket.send(message);
+      }
+    }
+   
+    tableRaster.onClick = function(){
+      lastClicked = tableRaster;
+      lastClickedId = tableId;
+    }
+    couchRaster.onClick = function() {
+      lastClicked = couchRaster;
+      lastClickedId = couchId;
+    }
+    tableRaster.onMouseDrag = function(event) {
+      tableRaster.insertAbove(couchRaster);
+      tableRaster.position = event.point;
+    }
+    couchRaster.onMouseDrag = function(event) {
+      couchRaster.insertAbove(tableRaster);
+      couchRaster.position = event.point;
+    }
+    tableRaster.onMouseUp = function(event) {
+      message = JSON.stringify({id: tableId, rotation: null, x: (event.point.x/window.innerWidth), y: (event.point.y/blueprintRaster.height)});
+      socket.send(message);
+    }
+    couchRaster.onMouseUp = function(event) {
+      message = JSON.stringify({id: couchId, rotation: null, x: (event.point.x/window.innerWidth), y: (event.point.y/blueprintRaster.height)});
+      socket.send(message);
+    }
+    
+    socket.onmessage = function(receivedMessage) {
+      var msg = JSON.parse(receivedMessage.data);
+      var furnitureId = msg.id;
+      var rotation = msg.rotation;
+      var x = msg.x;
+      var y = msg.y;
+      if (furnitureId == couchId) {
+        if (rotation != null && rotation != couchOrientation) {
+          couchRaster.rotate(rotation-couchOrientation);
+          couchOrientation = rotation%360;
+        }
+         if (x != null) {
+           couchRaster.position = new paper.Point((x*window.innerWidth), (y*blueprintRaster.height));
+         }
+      } else {
+        if (rotation != null && rotation != tableOrientation) {
+          tableRaster.rotate(rotation-tableOrientation);
+          tableOrientation = rotation %360;
+        }
+        if (x != null) {
+          tableRaster.position = new paper.Point((x*window.innerWidth), (y*blueprintRaster.height));
+        }
+        
+      }
+    }
+    
+    
+    
+
+// Rotate the raster by 45 degrees on click of rotate:
+//      raster.rotate(45);
+    
+//     var currPath = new paper.Path();
+//     var userColor = '#'+(0x1000000+(Math.random())*0xffffff).toString(16).substr(1,6);
+//     var currId = Math.random(10000);
+//     var paths = {};
+  
+//    window.addEventListener('devicemotion', function(event) {
+//         if (event.acceleration.x > 2) {
+//           var context = canvas.getContext('2d');
+//           context.clearRect(0, 0, canvas.width, canvas.height);
+//           for (var index in paths) {
+//             paths[index].removeSegments();
+//             paths[index] = new paper.Path();
+//           }
+//         }
+//     });
+  
+//   window.addEventListener('deviceorientation', function(event) {
+//         if (event.gamma > 45){
+//           var newColor = '#'+(0x1000000+(Math.random())*0xffffff).toString(16).substr(1,6);
+//           currPath.strokeColor = newColor;
+//           userColor = newColor;
+//         }
+//   });
+
+
+//     socket.onmessage = function(receivedMessage) {
+//       // do something when you receive a message
+// //       var msg = JSON.parse(receivedMessage.data);
+// //       var x = msg.x;
+// //       var y = msg.y;
+// //       var c = msg.color;
+// //       var id = msg.id;
+      
+// //       if (url.indexOf('?size=large') > -1) {
+// //         if (id in paths) {
+// //           var p = paths[id];
+// //           p.add(new paper.Point(x, y));
+// //         }
+// //         else {
+// //           var otherPath = new paper.Path();
+// //           otherPath.strokeColor = c;
+// //           otherPath.strokeWidth = 5;
+// //           otherPath.add(new paper.Point(x, y));
+// //           paths[id] = otherPath;
+
+// //         }
+// //       }
+//     };
+//     var message;
+//     tool.onMouseMove = function(event) {
+// //           currPath.strokeColor = userColor;
+// //           currPath.strokeWidth = 5;
+// //           currPath.add(event.point);
+// //           var pointX = event.point.x;
+// //           var pointY = event.point.y;
+// //           message = JSON.stringify({x: pointX, y: pointY, id: currId, color: userColor}); // send ID with path
+// //           socket.send(message);
+//     }; 
+  
+    
+    
+    // notify console if socket closes unexpectedly
+    socket.onclose = function(e) {
+        console.error('Chat socket closed unexpectedly');
+    };
+
+
+</script>
+</html>
